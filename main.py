@@ -12,7 +12,6 @@ import shutil
 
 class VideoDownloader:
     def __init__(self):
-        self.temp_dir = tempfile.mkdtemp()
         self.base_opts = {
             'quiet': True,
             'no_warnings': True,
@@ -22,7 +21,6 @@ class VideoDownloader:
             'no_color': True,
             'extract_flat': False,
             'socket_timeout': 30,
-            'outtmpl': os.path.join(self.temp_dir, '%(title)s.%(ext)s'),
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             }
@@ -174,31 +172,26 @@ class VideoDownloader:
                         ydl_opts[key] = value
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
+                info = ydl.extract_info(url, download=False)
                 if not info:
-                    return False, None, 'Erro ao baixar o vídeo'
+                    return False, None, 'Erro ao obter informações do vídeo'
                 
-                # Encontrar o arquivo baixado
-                for file in os.listdir(self.temp_dir):
-                    file_path = os.path.join(self.temp_dir, file)
-                    if os.path.isfile(file_path):
-                        with open(file_path, 'rb') as f:
-                            content = f.read()
-                        os.remove(file_path)  # Limpa o arquivo temporário
-                        return True, content, file
+                # Pegar a URL direta do vídeo
+                if 'url' in info:
+                    direct_url = info['url']
+                elif 'formats' in info and len(info['formats']) > 0:
+                    # Pegar o formato de melhor qualidade
+                    direct_url = info['formats'][-1]['url']
+                else:
+                    return False, None, 'Não foi possível encontrar a URL do vídeo'
                 
-                return False, None, 'Arquivo não encontrado após download'
+                return True, direct_url, info.get('title', 'video')
+
         except Exception as e:
             return False, None, str(e)
-        finally:
-            try:
-                shutil.rmtree(self.temp_dir)  # Limpa o diretório temporário
-                self.temp_dir = tempfile.mkdtemp()  # Cria um novo diretório temporário
-            except:
-                pass
 
 def main(page: ft.Page):
-    page.title = "Video Downloader"
+    page.title = "Download de vídeos busetinha"
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 20
     page.spacing = 20
@@ -320,44 +313,45 @@ def main(page: ft.Page):
         progress_ring.visible = True
         page.update()
         
-        downloader = VideoDownloader()
-        success, content, result = downloader.download_video(url, format_id)
+        try:
+            downloader = VideoDownloader()
+            success, content, result = downloader.download_video(url, format_id)
 
-        if not success:
+            if not success:
+                progress_ring.visible = False
+                snack.content = ft.Text(f"Erro: {result}")
+                snack.open = True
+                page.update()
+                return
+
+            # Criar link direto para download
+            download_link = ft.ElevatedButton(
+                "Clique para baixar",
+                on_click=lambda _: page.launch_url(content),
+                bgcolor=Colors.GREEN_400,
+            )
+
+            # Adicionar o botão à interface
+            download_container = ft.Container(
+                content=ft.Column([
+                    ft.Text("Vídeo pronto!", size=20, weight=ft.FontWeight.BOLD),
+                    download_link
+                ]),
+                alignment=ft.alignment.center,
+                padding=20,
+            )
+            
             progress_ring.visible = False
-            snack.content = ft.Text(f"Erro: {result}")
+            page.add(download_container)
+            page.update()
+        except Exception as e:
+            progress_ring.visible = False
+            snack.content = ft.Text(f"Erro no download: {str(e)}")
             snack.open = True
             page.update()
-            return
-
-        # Criar o botão de download
-        filename = result
-        download_url = page.get_upload_url(filename, content, "video/mp4")
-        
-        # Criar link de download
-        download_link = ft.ElevatedButton(
-            "Baixar Vídeo",
-            url=download_url,
-            url_target="_blank",
-            bgcolor=Colors.GREEN_400,
-        )
-
-        # Adicionar o botão à interface
-        download_container = ft.Container(
-            content=ft.Column([
-                ft.Text("Download pronto!", size=20, weight=ft.FontWeight.BOLD),
-                download_link
-            ]),
-            alignment=ft.alignment.center,
-            padding=20,
-        )
-        
-        progress_ring.visible = False
-        page.add(download_container)
-        page.update()
 
     # Interface principal
-    title = ft.Text("Video Downloader", size=40, weight=ft.FontWeight.BOLD)
+    title = ft.Text("Download de vídeos busetinha", size=40, weight=ft.FontWeight.BOLD)
     subtitle = ft.Text(
         "YouTube, Facebook, Twitter(X), Instagram",
         size=20,
