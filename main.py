@@ -1,8 +1,7 @@
 import flet as ft
 import yt_dlp
 import re
-import asyncio
-import aiohttp
+from concurrent.futures import ThreadPoolExecutor
 
 class VideoDownloader:
     def __init__(self):
@@ -12,7 +11,6 @@ class VideoDownloader:
             'format': 'best[ext=mp4]',
             'nocheckcertificate': True,
             'ignoreerrors': True,
-            'extract_flat': False,
         }
 
     def _detect_platform(self, url):
@@ -27,70 +25,56 @@ class VideoDownloader:
             return 'Twitter'
         return None
 
-    def validate_url(self, url):
-        if not url:
-            return False
-        url = url.lower()
-        pattern = r'(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|facebook\.com|fb\.watch|twitter\.com|x\.com|instagram\.com)\/\S+'
-        return bool(re.match(pattern, url))
-
-    async def get_video_info(self, url):
+    def get_video_info(self, url):
         try:
             platform = self._detect_platform(url)
             if not platform:
                 return {'error': 'URL não suportada'}
 
-            ydl_opts = {**self.base_opts}
-            
-            async with aiohttp.ClientSession() as session:
-                try:
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        info = await asyncio.get_event_loop().run_in_executor(
-                            None, lambda: ydl.extract_info(url, download=False)
-                        )
-                        
-                        if not info:
-                            return {'error': 'Não foi possível obter informações do vídeo'}
+            with ThreadPoolExecutor() as executor:
+                future = executor.submit(self._extract_info, url)
+                info = future.result()
 
-                        return {
-                            'title': info.get('title', 'Unknown'),
-                            'thumbnail': info.get('thumbnail'),
-                            'duration': info.get('duration'),
-                            'platform': platform,
-                            'url': info.get('url'),
-                            'webpage_url': info.get('webpage_url'),
-                        }
-                except Exception as e:
-                    return {'error': f'Erro ao processar vídeo: {str(e)}'}
+                if not info:
+                    return {'error': 'Não foi possível obter informações do vídeo'}
+
+                return {
+                    'title': info.get('title', 'Unknown'),
+                    'thumbnail': info.get('thumbnail'),
+                    'platform': platform,
+                }
 
         except Exception as e:
             return {'error': f'Erro ao processar vídeo: {str(e)}'}
 
-    async def get_direct_url(self, url):
+    def _extract_info(self, url):
+        with yt_dlp.YoutubeDL(self.base_opts) as ydl:
+            try:
+                return ydl.extract_info(url, download=False)
+            except:
+                return None
+
+    def get_direct_url(self, url):
         try:
-            ydl_opts = {**self.base_opts}
-            
-            async with aiohttp.ClientSession() as session:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = await asyncio.get_event_loop().run_in_executor(
-                        None, lambda: ydl.extract_info(url, download=False)
-                    )
-                    
-                    if not info:
-                        return None, 'Não foi possível obter informações do vídeo'
+            with ThreadPoolExecutor() as executor:
+                future = executor.submit(self._extract_info, url)
+                info = future.result()
 
-                    # Tenta obter a URL direta
-                    video_url = info.get('url')
-                    if video_url:
-                        return video_url, None
+                if not info:
+                    return None, 'Não foi possível obter informações do vídeo'
 
-                    # Se não encontrar URL direta, procura nos formatos
-                    formats = info.get('formats', [])
-                    for f in reversed(formats):  # Começa dos melhores formatos
-                        if f.get('url'):
-                            return f['url'], None
+                # Tenta obter a URL direta
+                video_url = info.get('url')
+                if video_url:
+                    return video_url, None
 
-                    return None, 'Não foi possível obter o link do vídeo'
+                # Se não encontrar URL direta, procura nos formatos
+                formats = info.get('formats', [])
+                for f in reversed(formats):  # Começa dos melhores formatos
+                    if f.get('url'):
+                        return f['url'], None
+
+                return None, 'Não foi possível obter o link do vídeo'
 
         except Exception as e:
             return None, str(e)
@@ -110,7 +94,7 @@ def main(page: ft.Page):
         page.vertical_alignment = ft.MainAxisAlignment.CENTER
         page.scroll = ft.ScrollMode.ADAPTIVE
 
-    async def on_url_submit(e):
+    def on_url_submit(e):
         if not url_field.value:
             page.show_snack_bar(
                 ft.SnackBar(content=ft.Text("Por favor, insira um URL"))
@@ -123,7 +107,7 @@ def main(page: ft.Page):
 
         try:
             downloader = VideoDownloader()
-            info = await downloader.get_video_info(url_field.value)
+            info = downloader.get_video_info(url_field.value)
 
             if 'error' in info:
                 page.show_snack_bar(
@@ -159,7 +143,7 @@ def main(page: ft.Page):
                                     ft.Divider(),
                                     ft.ElevatedButton(
                                         "Baixar Vídeo",
-                                        on_click=lambda _, url=url_field.value: asyncio.run(iniciar_download(url)),
+                                        on_click=lambda _, url=url_field.value: iniciar_download(url),
                                         width=300,
                                     ),
                                 ],
@@ -184,13 +168,13 @@ def main(page: ft.Page):
             progress_ring.visible = False
             page.update()
 
-    async def iniciar_download(url):
+    def iniciar_download(url):
         try:
             progress_ring.visible = True
             page.update()
 
             downloader = VideoDownloader()
-            video_url, error = await downloader.get_direct_url(url)
+            video_url, error = downloader.get_direct_url(url)
 
             progress_ring.visible = False
             page.update()
@@ -211,7 +195,7 @@ def main(page: ft.Page):
     url_field = ft.TextField(
         label="Cole o link do vídeo aqui",
         width=300,
-        on_submit=lambda e: asyncio.run(on_url_submit(e)),
+        on_submit=on_url_submit,
     )
     
     progress_ring = ft.ProgressRing(visible=False)
@@ -236,7 +220,7 @@ def main(page: ft.Page):
                 url_field,
                 ft.ElevatedButton(
                     "Analisar vídeo",
-                    on_click=lambda e: asyncio.run(on_url_submit(e)),
+                    on_click=on_url_submit,
                     width=200,
                 ),
                 progress_ring,
