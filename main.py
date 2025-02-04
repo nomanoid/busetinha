@@ -24,7 +24,6 @@ class VideoDownloader:
             }
         }
         
-        # Configurações específicas para cada plataforma
         self.platform_opts = {
             'YouTube': {
                 'format': 'best',
@@ -76,14 +75,8 @@ class VideoDownloader:
             if not platform:
                 return {'error': 'URL não suportada'}
 
-            # Converte URLs se necessário
-            if platform == 'Twitter' and 'x.com' in url.lower():
-                url = url.replace('x.com', 'twitter.com')
-
-            # Configurações base
             ydl_opts = {**self.base_opts}
             
-            # Adiciona configurações específicas da plataforma
             if platform in self.platform_opts:
                 platform_headers = self.platform_opts[platform].get('add_headers', {})
                 ydl_opts['http_headers'].update(platform_headers)
@@ -98,14 +91,12 @@ class VideoDownloader:
                     if not info:
                         return {'error': 'Não foi possível obter informações do vídeo'}
 
-                    # Tenta obter o tamanho do arquivo de diferentes maneiras
                     filesize = None
                     if 'filesize' in info:
                         filesize = info['filesize']
                     elif 'filesize_approx' in info:
                         filesize = info['filesize_approx']
                     elif 'formats' in info:
-                        # Procura o formato com maior tamanho
                         max_size = 0
                         for f in info['formats']:
                             if f.get('filesize'):
@@ -124,6 +115,22 @@ class VideoDownloader:
                         else:
                             size_text = f"{filesize/(1024*1024):.1f} MB"
 
+                    formats = []
+                    formats.append({
+                        'format_id': 'best',
+                        'quality': 'Melhor qualidade',
+                        'size': size_text,
+                        'url': info.get('url', None)  # Armazena a URL direta
+                    })
+                    
+                    return {
+                        'title': info.get('title', 'Unknown'),
+                        'thumbnail': info.get('thumbnail'),
+                        'duration': info.get('duration'),
+                        'platform': platform,
+                        'formats': formats,
+                    }
+
                 except yt_dlp.utils.ExtractorError as e:
                     if 'Private video' in str(e):
                         return {'error': 'Este vídeo é privado'}
@@ -135,33 +142,16 @@ class VideoDownloader:
                         return {'error': f'Erro ao processar vídeo: {str(e)}'}
                 except Exception as e:
                     return {'error': f'Erro ao processar vídeo: {str(e)}'}
-                
-                formats = []
-                formats.append({
-                    'format_id': 'best',
-                    'quality': 'Melhor qualidade',
-                    'size': size_text
-                })
-                
-                return {
-                    'title': info.get('title', 'Unknown'),
-                    'thumbnail': info.get('thumbnail'),
-                    'duration': info.get('duration'),
-                    'platform': platform,
-                    'formats': formats,
-                }
         except Exception as e:
             return {'error': f'Erro ao processar vídeo: {str(e)}'}
 
-    def download_video(self, url, format_id, output_dir=None):
+    def download_video(self, url, format_id):
         try:
             platform = self._detect_platform(url)
             if not platform:
-                return False, 'Plataforma não suportada. No momento, apenas YouTube, Facebook, Twitter e Instagram são suportados.'
+                return False, 'Plataforma não suportada.'
 
             ydl_opts = {**self.base_opts}
-            
-            # Adiciona headers específicos da plataforma
             if platform in self.platform_opts:
                 platform_headers = self.platform_opts[platform].get('add_headers', {})
                 ydl_opts['http_headers'].update(platform_headers)
@@ -170,40 +160,32 @@ class VideoDownloader:
                     if key != 'add_headers':
                         ydl_opts[key] = value
 
-            if output_dir:
-                # Modo desktop: salva no diretório escolhido
-                ydl_opts.update({
-                    'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
-                })
-            else:
-                # Modo web: retorna o URL direto do vídeo
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    if not info:
-                        return False, 'Não foi possível obter informações do vídeo'
-                    
-                    # Tenta obter a melhor URL do vídeo
-                    video_url = None
-                    if 'url' in info:
-                        video_url = info['url']
-                    elif 'formats' in info and len(info['formats']) > 0:
-                        # Pega o formato com melhor qualidade
-                        best_format = info['formats'][-1]
-                        video_url = best_format.get('url')
-                    
-                    if video_url:
-                        return True, video_url
-                    return False, 'Não foi possível obter o URL do vídeo'
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                if not info:
+                    return False, 'Não foi possível obter informações do vídeo'
 
-            if output_dir:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    error_code = ydl.download([url])
-                    if error_code != 0:
-                        return False, 'Erro ao baixar o vídeo'
-                return True, None
+                # Tenta obter a URL direta do vídeo
+                direct_url = None
+                
+                # Primeiro tenta a URL direta do vídeo
+                if 'url' in info:
+                    direct_url = info['url']
+                # Se não encontrar, procura nos formatos
+                elif 'formats' in info:
+                    formats = info['formats']
+                    # Começa do formato com melhor qualidade
+                    for format in reversed(formats):
+                        if format.get('url'):
+                            direct_url = format['url']
+                            break
+
+                if direct_url:
+                    return True, direct_url
+                return False, 'Não foi possível obter o link do vídeo'
 
         except Exception as e:
-            return False, str(e)
+            return False, f'Erro ao baixar vídeo: {str(e)}'
 
 def main(page: ft.Page):
     page.title = "Busetinha Downloader"
@@ -278,7 +260,7 @@ def main(page: ft.Page):
                                     *[
                                         ft.ElevatedButton(
                                             f"Download {f['quality']} - {f['size']}" if f['size'] != 'N/A' else f"Download {f['quality']}",
-                                            on_click=lambda _, url=url_field.value, format_id=f['format_id']: download_video(url, format_id),
+                                            on_click=lambda _, url=url_field.value, format_id=f['format_id']: iniciar_download(url, format_id),
                                             width=300,
                                         )
                                         for f in info['formats']
@@ -305,6 +287,47 @@ def main(page: ft.Page):
             progress_ring.visible = False
             page.update()
 
+    def iniciar_download(url, format_id):
+        try:
+            downloader = VideoDownloader()
+            success, result = downloader.download_video(url, format_id)
+
+            if not success:
+                page.show_snack_bar(ft.SnackBar(content=ft.Text(f"Erro: {result}")))
+                return
+
+            # Cria um link <a> para download
+            download_link = ft.Text(
+                "Se o download não iniciar automaticamente, clique aqui",
+                color=ft.colors.BLUE,
+                weight=ft.FontWeight.BOLD,
+            )
+            download_link.on_click = lambda _: page.launch_url(result)
+
+            # Mostra o diálogo com o link
+            page.dialog = ft.AlertDialog(
+                title=ft.Text("Download"),
+                content=ft.Column([
+                    ft.Text("Seu download está pronto!"),
+                    download_link,
+                ]),
+                actions=[
+                    ft.TextButton("Fechar", on_click=lambda _: close_dialog())
+                ],
+            )
+            page.dialog.open = True
+            page.update()
+
+            # Tenta iniciar o download automaticamente
+            page.launch_url(result)
+
+        except Exception as e:
+            page.show_snack_bar(ft.SnackBar(content=ft.Text(f"Erro ao baixar: {str(e)}")))
+
+    def close_dialog():
+        page.dialog.open = False
+        page.update()
+
     def format_duration(duration):
         if not duration:
             return "Duração não disponível"
@@ -324,28 +347,6 @@ def main(page: ft.Page):
         pattern = r'(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|facebook\.com|fb\.watch|twitter\.com|x\.com|instagram\.com)\/\S+'
         return bool(re.match(pattern, url))
 
-    def download_video(url, format_id):
-        try:
-            downloader = VideoDownloader()
-            success, result = downloader.download_video(url, format_id)
-
-            if not success:
-                page.show_snack_bar(
-                    ft.SnackBar(content=ft.Text(f"Erro: {result}"))
-                )
-                return
-
-            # Cria um link para download direto
-            page.launch_url(result)
-            
-            page.show_snack_bar(
-                ft.SnackBar(content=ft.Text("Download iniciado!"))
-            )
-        except Exception as e:
-            page.show_snack_bar(
-                ft.SnackBar(content=ft.Text(f"Erro ao iniciar download: {str(e)}"))
-            )
-
     # Interface principal
     url_field = ft.TextField(
         label="Cole o link do vídeo aqui",
@@ -355,9 +356,7 @@ def main(page: ft.Page):
     
     progress_ring = ft.ProgressRing(visible=False)
     
-    video_info_container = ft.Container(
-        visible=False,
-    )
+    video_info_container = ft.Container(visible=False)
 
     page.add(
         ft.Column(
