@@ -208,46 +208,102 @@ class VideoDownloader:
 def main(page: ft.Page):
     page.title = "Busetinha Downloader"
     page.theme_mode = ft.ThemeMode.DARK
-    
-    # Configurações básicas
-    if page.web:
-        # Configurações específicas para web
-        page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
-        page.scroll = ft.ScrollMode.ADAPTIVE
-        page.viewport = ft.ViewPort(
-            width=450,
-            height=800,
-            minimum_scale=0.5,
-            maximum_scale=2.0,
-            initial_scale=1.0,
-        )
-    else:
-        # Configurações específicas para desktop
-        page.window_width = 800
-        page.window_min_width = 400
-        page.window_height = 800
-        page.window_min_height = 600
-        page.scroll = ft.ScrollMode.AUTO
-    
-    # Padding adaptativo
-    page.padding = ft.padding.all(10 if page.web else 20)
+    page.padding = 20
     page.spacing = 10
+    
+    # Configurações web
+    if page.web:
+        page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+        page.vertical_alignment = ft.MainAxisAlignment.CENTER
+        page.scroll = ft.ScrollMode.ADAPTIVE
 
-    def animate_container(e):
-        if e.data == "true":
-            e.control.scale = 1.02
-            e.control.opacity = 0.8
-        else:
-            e.control.scale = 1.0
-            e.control.opacity = 1.0
-        e.control.update()
+    def on_url_submit(e):
+        if not url_field.value:
+            page.show_snack_bar(
+                ft.SnackBar(content=ft.Text("Por favor, insira um URL"))
+            )
+            return
+        
+        if not validate_url(url_field.value):
+            page.show_snack_bar(
+                ft.SnackBar(content=ft.Text("URL inválido. Por favor, insira um URL válido."))
+            )
+            return
 
-    def validate_url(url):
-        if not url:
-            return False
-        url = url.lower()
-        pattern = r'(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|facebook\.com|fb\.watch|twitter\.com|x\.com|instagram\.com)\/\S+'
-        return bool(re.match(pattern, url))
+        progress_ring.visible = True
+        video_info_container.visible = False
+        page.update()
+
+        try:
+            downloader = VideoDownloader()
+            info = downloader.get_video_info(url_field.value)
+
+            if 'error' in info:
+                page.show_snack_bar(
+                    ft.SnackBar(content=ft.Text(f"Erro: {info['error']}"))
+                )
+                progress_ring.visible = False
+                page.update()
+                return
+
+            video_info_container.content = ft.Column(
+                controls=[
+                    ft.Card(
+                        content=ft.Container(
+                            content=ft.Column(
+                                [
+                                    ft.Image(
+                                        src=info['thumbnail'],
+                                        fit=ft.ImageFit.CONTAIN,
+                                        border_radius=10,
+                                        height=200,
+                                    ),
+                                    ft.Text(
+                                        info['title'],
+                                        size=20,
+                                        weight=ft.FontWeight.BOLD,
+                                        text_align=ft.TextAlign.CENTER,
+                                    ),
+                                    ft.Text(
+                                        f"Plataforma: {info['platform']}",
+                                        size=16,
+                                        text_align=ft.TextAlign.CENTER,
+                                    ),
+                                    ft.Text(
+                                        format_duration(info['duration']),
+                                        size=16,
+                                        text_align=ft.TextAlign.CENTER,
+                                    ),
+                                    ft.Divider(),
+                                    *[
+                                        ft.ElevatedButton(
+                                            f"Download {f['quality']} - {f['size']}" if f['size'] != 'N/A' else f"Download {f['quality']}",
+                                            on_click=lambda _, url=url_field.value, format_id=f['format_id']: download_video(url, format_id),
+                                            width=300,
+                                        )
+                                        for f in info['formats']
+                                    ],
+                                ],
+                                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                                spacing=10,
+                            ),
+                            padding=20,
+                        )
+                    )
+                ],
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            )
+            
+            progress_ring.visible = False
+            video_info_container.visible = True
+            page.update()
+            
+        except Exception as e:
+            page.show_snack_bar(
+                ft.SnackBar(content=ft.Text(f"Erro ao processar vídeo: {str(e)}"))
+            )
+            progress_ring.visible = False
+            page.update()
 
     def format_duration(duration):
         if not duration:
@@ -261,254 +317,77 @@ def main(page: ft.Page):
         except:
             return "Duração não disponível"
 
-    def on_url_submit(e):
-        if not url_field.value:
-            snack.content = ft.Text("Por favor, insira um URL")
-            snack.open = True
-            page.update()
-            return
-        
-        if not validate_url(url_field.value):
-            snack.content = ft.Text("URL inválido. Por favor, insira um URL válido.")
-            snack.open = True
-            page.update()
-            return
-
-        progress_ring.visible = True
-        video_info_container.visible = False
-        page.update()
-
-        downloader = VideoDownloader()
-        info = downloader.get_video_info(url_field.value)
-
-        if 'error' in info:
-            snack.content = ft.Text(f"Erro: {info['error']}")
-            snack.open = True
-            progress_ring.visible = False
-            page.update()
-            return
-
-        # Ajuste do layout do card para melhor responsividade
-        video_info_container.content = ft.Column(
-            controls=[
-                ft.Card(
-                    content=ft.Container(
-                        content=ft.Column(
-                            controls=[
-                                ft.Container(
-                                    content=ft.Image(
-                                        src=info['thumbnail'],
-                                        fit=ft.ImageFit.CONTAIN,
-                                        border_radius=ft.border_radius.all(10),
-                                    ),
-                                    height=200,
-                                ),
-                                ft.Container(
-                                    content=ft.Text(
-                                        info['title'],
-                                        size=18 if page.web else 20,
-                                        weight=ft.FontWeight.BOLD,
-                                        text_align=ft.TextAlign.CENTER,
-                                    ),
-                                    padding=10,
-                                ),
-                                ft.Text(
-                                    f"Plataforma: {info['platform']}",
-                                    size=14 if page.web else 16,
-                                    text_align=ft.TextAlign.CENTER,
-                                ),
-                                ft.Text(
-                                    format_duration(info['duration']),
-                                    size=14 if page.web else 16,
-                                    text_align=ft.TextAlign.CENTER,
-                                ),
-                                ft.Divider(height=1),
-                                ft.Text(
-                                    "Qualidades disponíveis:",
-                                    size=16 if page.web else 18,
-                                    weight=ft.FontWeight.BOLD,
-                                    text_align=ft.TextAlign.CENTER,
-                                ),
-                                ft.Column(
-                                    controls=[
-                                        ft.Container(
-                                            content=ft.ElevatedButton(
-                                                content=ft.Text(
-                                                    f"Qualidade: {f['quality']} - Tamanho: {f['size']}" if f['size'] != 'N/A' else f"Qualidade: {f['quality']}",
-                                                    size=14 if page.web else 16,
-                                                ),
-                                                width=None,
-                                                expand=True,
-                                                on_hover=animate_container,
-                                                on_click=lambda _, url=url_field.value, format_id=f['format_id']: download_video(url, format_id),
-                                            ),
-                                            padding=ft.padding.symmetric(vertical=5),
-                                        ) for f in info['formats']
-                                    ],
-                                    spacing=5,
-                                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                                ),
-                            ],
-                            spacing=5,
-                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                            scroll=ft.ScrollMode.AUTO,
-                        ),
-                        padding=10,
-                    ),
-                )
-            ],
-            scroll=ft.ScrollMode.AUTO,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        )
-        progress_ring.visible = False
-        video_info_container.visible = True
-        page.update()
+    def validate_url(url):
+        if not url:
+            return False
+        url = url.lower()
+        pattern = r'(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be|facebook\.com|fb\.watch|twitter\.com|x\.com|instagram\.com)\/\S+'
+        return bool(re.match(pattern, url))
 
     def download_video(url, format_id):
-        if page.web:
-            # Modo web: obtém URL direta do vídeo
-            progress_ring.visible = True
-            page.update()
+        try:
+            downloader = VideoDownloader()
+            success, result = downloader.download_video(url, format_id)
+
+            if not success:
+                page.show_snack_bar(
+                    ft.SnackBar(content=ft.Text(f"Erro: {result}"))
+                )
+                return
+
+            # Cria um link para download direto
+            page.launch_url(result)
             
-            try:
-                downloader = VideoDownloader()
-                success, result = downloader.download_video(url, format_id)
-
-                progress_ring.visible = False
-                if not success:
-                    snack.content = ft.Text(f"Erro: {result}")
-                    snack.open = True
-                    page.update()
-                    return
-
-                # Cria um link para download direto
-                if page.platform == "android" or page.platform == "ios":
-                    # Para dispositivos móveis, abre em nova aba
-                    page.window_open(result, "_blank")
-                else:
-                    # Para desktop web, usa launch_url
-                    page.launch_url(result)
-                
-                snack.content = ft.Text("Download iniciado!")
-                snack.open = True
-                page.update()
-            except Exception as e:
-                progress_ring.visible = False
-                snack.content = ft.Text(f"Erro ao iniciar download: {str(e)}")
-                snack.open = True
-                page.update()
-        else:
-            # Modo desktop: usa FilePicker
-            def on_dialog_result(e: ft.FilePickerResultEvent):
-                if e.path:
-                    progress_ring.visible = True
-                    page.update()
-                    
-                    downloader = VideoDownloader()
-                    success, error = downloader.download_video(url, format_id, e.path)
-
-                    progress_ring.visible = False
-                    if not success:
-                        snack.content = ft.Text(f"Erro: {error}")
-                        snack.open = True
-                        page.update()
-                        return
-
-                    snack.content = ft.Text("Download concluído com sucesso!")
-                    snack.open = True
-                    page.update()
-
-            file_picker = ft.FilePicker(
-                on_result=on_dialog_result
+            page.show_snack_bar(
+                ft.SnackBar(content=ft.Text("Download iniciado!"))
             )
-            page.overlay.append(file_picker)
-            page.update()
-            file_picker.get_directory_path()
+        except Exception as e:
+            page.show_snack_bar(
+                ft.SnackBar(content=ft.Text(f"Erro ao iniciar download: {str(e)}"))
+            )
 
     # Interface principal
-    title = ft.Text(
-        "Busetinha Downloader", 
-        size=30 if page.web else 40,
-        weight=ft.FontWeight.BOLD,
-        text_align=ft.TextAlign.CENTER,
-    )
-    
-    subtitle = ft.Text(
-        "YouTube, Facebook, Twitter(X), Instagram",
-        size=16 if page.web else 20,
-        color=Colors.BLUE_400,
-        text_align=ft.TextAlign.CENTER,
-    )
-
     url_field = ft.TextField(
         label="Cole o link do vídeo aqui",
-        width=None,
-        expand=True,
+        width=300,
         on_submit=on_url_submit,
-        autofocus=True,
-        text_align=ft.TextAlign.LEFT,
     )
-
-    submit_button = ft.ElevatedButton(
-        "Analisar vídeo",
-        on_click=on_url_submit,
-        width=None,
-        style=ft.ButtonStyle(
-            shape=ft.RoundedRectangleBorder(radius=10),
-        ),
-    )
-
+    
     progress_ring = ft.ProgressRing(visible=False)
     
     video_info_container = ft.Container(
         visible=False,
-        expand=True,
-    )
-    
-    snack = ft.SnackBar(
-        content=ft.Text(""),
-        action="Ok",
     )
 
-    # Layout responsivo usando Container e Column
-    main_content = ft.Container(
-        content=ft.Column(
+    page.add(
+        ft.Column(
             [
-                ft.Container(
-                    content=title,
-                    alignment=ft.alignment.center,
+                ft.Text(
+                    "Busetinha Downloader",
+                    size=30,
+                    weight=ft.FontWeight.BOLD,
+                    text_align=ft.TextAlign.CENTER,
                 ),
-                ft.Container(
-                    content=subtitle,
-                    alignment=ft.alignment.center,
+                ft.Text(
+                    "YouTube, Facebook, Twitter(X), Instagram",
+                    size=16,
+                    color=Colors.BLUE_400,
+                    text_align=ft.TextAlign.CENTER,
                 ),
-                ft.Divider(height=1),
-                ft.Container(
-                    content=ft.Column(
-                        [
-                            url_field,
-                            submit_button,
-                        ],
-                        spacing=10,
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    padding=10,
+                ft.Divider(),
+                url_field,
+                ft.ElevatedButton(
+                    "Analisar vídeo",
+                    on_click=on_url_submit,
+                    width=200,
                 ),
-                ft.Container(
-                    content=progress_ring,
-                    alignment=ft.alignment.center,
-                ),
+                progress_ring,
                 video_info_container,
             ],
-            spacing=10,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            scroll=ft.ScrollMode.AUTO,
-        ),
-        expand=True,
-        padding=10,
+            spacing=20,
+        )
     )
 
-    page.add(main_content)
-
 if __name__ == "__main__":
-    ft.app(target=main)
+    ft.app(target=main, view=ft.WEB_BROWSER)
