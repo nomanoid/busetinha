@@ -208,18 +208,12 @@ class VideoDownloader:
 def main(page: ft.Page):
     page.title = "Busetinha Downloader"
     page.theme_mode = ft.ThemeMode.DARK
-    page.padding = 20
-    page.spacing = 20
-    page.scroll = ft.ScrollMode.AUTO
     
-    # Configuração responsiva
-    page.window_width = 800
-    page.window_min_width = 400
-    page.window_height = 800
-    page.window_min_height = 600
-    
-    # Adiciona viewport apenas para web
+    # Configurações básicas
     if page.web:
+        # Configurações específicas para web
+        page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+        page.scroll = ft.ScrollMode.ADAPTIVE
         page.viewport = ft.ViewPort(
             width=450,
             height=800,
@@ -227,6 +221,17 @@ def main(page: ft.Page):
             maximum_scale=2.0,
             initial_scale=1.0,
         )
+    else:
+        # Configurações específicas para desktop
+        page.window_width = 800
+        page.window_min_width = 400
+        page.window_height = 800
+        page.window_min_height = 600
+        page.scroll = ft.ScrollMode.AUTO
+    
+    # Padding adaptativo
+    page.padding = ft.padding.all(10 if page.web else 20)
+    page.spacing = 10
 
     def animate_container(e):
         if e.data == "true":
@@ -283,6 +288,7 @@ def main(page: ft.Page):
             page.update()
             return
 
+        # Ajuste do layout do card para melhor responsividade
         video_info_container.content = ft.Column(
             controls=[
                 ft.Card(
@@ -297,23 +303,42 @@ def main(page: ft.Page):
                                     ),
                                     height=200,
                                 ),
-                                ft.Text(info['title'], size=20, weight=ft.FontWeight.BOLD),
-                                ft.Text(f"Plataforma: {info['platform']}", size=16),
+                                ft.Container(
+                                    content=ft.Text(
+                                        info['title'],
+                                        size=18 if page.web else 20,
+                                        weight=ft.FontWeight.BOLD,
+                                        text_align=ft.TextAlign.CENTER,
+                                    ),
+                                    padding=10,
+                                ),
+                                ft.Text(
+                                    f"Plataforma: {info['platform']}",
+                                    size=14 if page.web else 16,
+                                    text_align=ft.TextAlign.CENTER,
+                                ),
                                 ft.Text(
                                     format_duration(info['duration']),
-                                    size=16
+                                    size=14 if page.web else 16,
+                                    text_align=ft.TextAlign.CENTER,
                                 ),
-                                ft.Divider(),
-                                ft.Text("Qualidades disponíveis:", size=18, weight=ft.FontWeight.BOLD),
+                                ft.Divider(height=1),
+                                ft.Text(
+                                    "Qualidades disponíveis:",
+                                    size=16 if page.web else 18,
+                                    weight=ft.FontWeight.BOLD,
+                                    text_align=ft.TextAlign.CENTER,
+                                ),
                                 ft.Column(
                                     controls=[
                                         ft.Container(
                                             content=ft.ElevatedButton(
                                                 content=ft.Text(
                                                     f"Qualidade: {f['quality']} - Tamanho: {f['size']}" if f['size'] != 'N/A' else f"Qualidade: {f['quality']}",
-                                                    size=16,
+                                                    size=14 if page.web else 16,
                                                 ),
                                                 width=None,
+                                                expand=True,
                                                 on_hover=animate_container,
                                                 on_click=lambda _, url=url_field.value, format_id=f['format_id']: download_video(url, format_id),
                                             ),
@@ -321,16 +346,19 @@ def main(page: ft.Page):
                                         ) for f in info['formats']
                                     ],
                                     spacing=5,
+                                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                                 ),
                             ],
-                            spacing=10,
+                            spacing=5,
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                             scroll=ft.ScrollMode.AUTO,
                         ),
-                        padding=20,
+                        padding=10,
                     ),
                 )
             ],
             scroll=ft.ScrollMode.AUTO,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         )
         progress_ring.visible = False
         video_info_container.visible = True
@@ -398,31 +426,33 @@ def main(page: ft.Page):
             file_picker.get_directory_path()
 
     # Interface principal
-    title = ft.Text("Busetinha Downloader", 
-                   size=40 if not page.web else 30,
-                   weight=ft.FontWeight.BOLD,
-                   text_align=ft.TextAlign.CENTER)
+    title = ft.Text(
+        "Busetinha Downloader", 
+        size=30 if page.web else 40,
+        weight=ft.FontWeight.BOLD,
+        text_align=ft.TextAlign.CENTER,
+    )
     
     subtitle = ft.Text(
         "YouTube, Facebook, Twitter(X), Instagram",
-        size=20 if not page.web else 16,
+        size=16 if page.web else 20,
         color=Colors.BLUE_400,
         text_align=ft.TextAlign.CENTER,
     )
 
     url_field = ft.TextField(
         label="Cole o link do vídeo aqui",
-        width=None if page.web else 600,
-        expand=True if page.web else False,
+        width=None,
+        expand=True,
         on_submit=on_url_submit,
         autofocus=True,
+        text_align=ft.TextAlign.LEFT,
     )
 
     submit_button = ft.ElevatedButton(
         "Analisar vídeo",
         on_click=on_url_submit,
-        width=200 if not page.web else None,
-        height=50,
+        width=None,
         style=ft.ButtonStyle(
             shape=ft.RoundedRectangleBorder(radius=10),
         ),
@@ -432,7 +462,7 @@ def main(page: ft.Page):
     
     video_info_container = ft.Container(
         visible=False,
-        expand=True if page.web else False,
+        expand=True,
     )
     
     snack = ft.SnackBar(
@@ -440,44 +470,45 @@ def main(page: ft.Page):
         action="Ok",
     )
 
-    # Container principal com layout responsivo
-    main_column = ft.Column(
-        [
-            ft.Container(
-                content=title,
-                alignment=ft.alignment.center,
-            ),
-            ft.Container(
-                content=subtitle,
-                alignment=ft.alignment.center,
-            ),
-            ft.Divider(),
-            ft.Container(
-                content=ft.Column([
-                    ft.Container(
-                        content=url_field,
-                        padding=10,
+    # Layout responsivo usando Container e Column
+    main_content = ft.Container(
+        content=ft.Column(
+            [
+                ft.Container(
+                    content=title,
+                    alignment=ft.alignment.center,
+                ),
+                ft.Container(
+                    content=subtitle,
+                    alignment=ft.alignment.center,
+                ),
+                ft.Divider(height=1),
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            url_field,
+                            submit_button,
+                        ],
+                        spacing=10,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
-                    ft.Container(
-                        content=submit_button,
-                        alignment=ft.alignment.center,
-                    ),
-                ]),
-                padding=10,
-            ),
-            ft.Container(
-                content=progress_ring,
-                alignment=ft.alignment.center,
-            ),
-            video_info_container,
-            snack,
-        ],
-        spacing=10,
-        scroll=ft.ScrollMode.AUTO,
+                    padding=10,
+                ),
+                ft.Container(
+                    content=progress_ring,
+                    alignment=ft.alignment.center,
+                ),
+                video_info_container,
+            ],
+            spacing=10,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            scroll=ft.ScrollMode.AUTO,
+        ),
         expand=True,
+        padding=10,
     )
 
-    page.add(main_column)
+    page.add(main_content)
 
 if __name__ == "__main__":
     ft.app(target=main)
