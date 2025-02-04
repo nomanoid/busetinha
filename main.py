@@ -206,15 +206,27 @@ class VideoDownloader:
             return False, str(e)
 
 def main(page: ft.Page):
-    page.title = "Video Downloader"
+    page.title = "Busetinha Downloader"
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 20
     page.spacing = 20
     page.scroll = ft.ScrollMode.AUTO
+    
+    # Configuração responsiva
     page.window_width = 800
     page.window_min_width = 400
     page.window_height = 800
     page.window_min_height = 600
+    
+    # Adiciona viewport apenas para web
+    if page.web:
+        page.viewport = ft.ViewPort(
+            width=450,
+            height=800,
+            minimum_scale=0.5,
+            maximum_scale=2.0,
+            initial_scale=1.0,
+        )
 
     def animate_container(e):
         if e.data == "true":
@@ -326,25 +338,37 @@ def main(page: ft.Page):
 
     def download_video(url, format_id):
         if page.web:
-            # Modo web: obtém URL direto do vídeo
+            # Modo web: obtém URL direta do vídeo
             progress_ring.visible = True
             page.update()
             
-            downloader = VideoDownloader()
-            success, result = downloader.download_video(url, format_id)
+            try:
+                downloader = VideoDownloader()
+                success, result = downloader.download_video(url, format_id)
 
-            progress_ring.visible = False
-            if not success:
-                snack.content = ft.Text(f"Erro: {result}")
+                progress_ring.visible = False
+                if not success:
+                    snack.content = ft.Text(f"Erro: {result}")
+                    snack.open = True
+                    page.update()
+                    return
+
+                # Cria um link para download direto
+                if page.platform == "android" or page.platform == "ios":
+                    # Para dispositivos móveis, abre em nova aba
+                    page.window_open(result, "_blank")
+                else:
+                    # Para desktop web, usa launch_url
+                    page.launch_url(result)
+                
+                snack.content = ft.Text("Download iniciado!")
                 snack.open = True
                 page.update()
-                return
-
-            # Cria um link para download direto
-            page.launch_url(result)
-            snack.content = ft.Text("Download iniciado!")
-            snack.open = True
-            page.update()
+            except Exception as e:
+                progress_ring.visible = False
+                snack.content = ft.Text(f"Erro ao iniciar download: {str(e)}")
+                snack.open = True
+                page.update()
         else:
             # Modo desktop: usa FilePicker
             def on_dialog_result(e: ft.FilePickerResultEvent):
@@ -374,16 +398,22 @@ def main(page: ft.Page):
             file_picker.get_directory_path()
 
     # Interface principal
-    title = ft.Text("Video Downloader", size=40, weight=ft.FontWeight.BOLD)
+    title = ft.Text("Busetinha Downloader", 
+                   size=40 if not page.web else 30,
+                   weight=ft.FontWeight.BOLD,
+                   text_align=ft.TextAlign.CENTER)
+    
     subtitle = ft.Text(
         "YouTube, Facebook, Twitter(X), Instagram",
-        size=20,
+        size=20 if not page.web else 16,
         color=Colors.BLUE_400,
+        text_align=ft.TextAlign.CENTER,
     )
 
     url_field = ft.TextField(
         label="Cole o link do vídeo aqui",
-        width=600,
+        width=None if page.web else 600,
+        expand=True if page.web else False,
         on_submit=on_url_submit,
         autofocus=True,
     )
@@ -391,7 +421,7 @@ def main(page: ft.Page):
     submit_button = ft.ElevatedButton(
         "Analisar vídeo",
         on_click=on_url_submit,
-        width=200,
+        width=200 if not page.web else None,
         height=50,
         style=ft.ButtonStyle(
             shape=ft.RoundedRectangleBorder(radius=10),
@@ -400,38 +430,54 @@ def main(page: ft.Page):
 
     progress_ring = ft.ProgressRing(visible=False)
     
-    video_info_container = ft.Container(visible=False)
+    video_info_container = ft.Container(
+        visible=False,
+        expand=True if page.web else False,
+    )
     
     snack = ft.SnackBar(
         content=ft.Text(""),
         action="Ok",
     )
 
-    page.add(
-        ft.Column(
-            [
-                ft.Row([title], alignment=ft.MainAxisAlignment.CENTER),
-                ft.Row([subtitle], alignment=ft.MainAxisAlignment.CENTER),
-                ft.Divider(),
-                ft.Row(
-                    [url_field],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                ),
-                ft.Row(
-                    [submit_button],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                ),
-                ft.Row(
-                    [progress_ring],
-                    alignment=ft.MainAxisAlignment.CENTER,
-                ),
-                video_info_container,
-                snack,
-            ],
-            spacing=20,
-            alignment=ft.MainAxisAlignment.CENTER,
-        )
+    # Container principal com layout responsivo
+    main_column = ft.Column(
+        [
+            ft.Container(
+                content=title,
+                alignment=ft.alignment.center,
+            ),
+            ft.Container(
+                content=subtitle,
+                alignment=ft.alignment.center,
+            ),
+            ft.Divider(),
+            ft.Container(
+                content=ft.Column([
+                    ft.Container(
+                        content=url_field,
+                        padding=10,
+                    ),
+                    ft.Container(
+                        content=submit_button,
+                        alignment=ft.alignment.center,
+                    ),
+                ]),
+                padding=10,
+            ),
+            ft.Container(
+                content=progress_ring,
+                alignment=ft.alignment.center,
+            ),
+            video_info_container,
+            snack,
+        ],
+        spacing=10,
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
     )
+
+    page.add(main_column)
 
 if __name__ == "__main__":
     ft.app(target=main)
